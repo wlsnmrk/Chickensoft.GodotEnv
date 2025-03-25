@@ -10,6 +10,7 @@ using Shouldly;
 public enum RunMode {
   Run = 0,
   RunUnchecked = 1,
+  RunWithIO = 2,
 }
 
 /// <summary>
@@ -63,6 +64,20 @@ public class ShellVerifier {
   public void Runs(
     string workingDir, ProcessResult result, string exe, params string[] args
   ) => MockProcess(workingDir, result, RunMode.Run, exe, args);
+
+  /// <summary>
+  /// Adds a mock shell command to be verified later (notionally uses user IO).
+  /// </summary>
+  /// <param name="workingDir">Directory in which the shell command should
+  /// be run. Must have created a mock shell previously for this
+  /// directory.</param>
+  /// <param name="result">Execution result.</param>
+  /// <param name="exe">Cli executable.</param>
+  /// <param name="args">Executable args.</param>
+  /// <exception cref="InvalidOperationException" />
+  public void RunsWithIO(
+    string workingDir, ProcessResult result, string exe, params string[] args
+  ) => MockProcess(workingDir, result, RunMode.RunWithIO, exe, args);
 
   /// <summary>
   /// Adds a mock shell command to be verified later (doesn't care if the
@@ -120,17 +135,30 @@ public class ShellVerifier {
     string[] args
   ) {
     var call = _added++;
-    if (runMode == RunMode.Run) {
-      shell.InSequence(_sequence).Setup(shell => shell.Run(exe, args))
+    switch (runMode) {
+      case RunMode.Run:
+        shell.InSequence(_sequence).Setup(shell => shell.Run(exe, args))
+          .Returns(Task.FromResult(result))
+          .Callback(() => _calls++.ShouldBe(call));
+        break;
+      case RunMode.RunUnchecked:
+        shell.InSequence(_sequence).Setup(
+          shell => shell.RunUnchecked(exe, args)
+        )
         .Returns(Task.FromResult(result))
         .Callback(() => _calls++.ShouldBe(call));
+        break;
+      case RunMode.RunWithIO:
+        shell.InSequence(_sequence).Setup(shell => shell.RunWithIO(exe, args))
+          .Returns(Task.FromResult(result))
+          .Callback(() => _calls++.ShouldBe(call));
+        break;
+      default:
+        throw new ArgumentException($"Unrecognized run mode {runMode}");
+    }
+    if (runMode == RunMode.Run) {
     }
     else {
-      shell.InSequence(_sequence).Setup(
-        shell => shell.RunUnchecked(exe, args)
-      )
-      .Returns(Task.FromResult(result))
-      .Callback(() => _calls++.ShouldBe(call));
     }
   }
 }

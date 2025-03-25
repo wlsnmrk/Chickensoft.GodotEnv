@@ -5,6 +5,7 @@ using System.Diagnostics;
 using System.Reactive.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using CliWrap;
 using CliWrap.EventStream;
@@ -36,6 +37,18 @@ public interface IProcessRunner {
   /// <param name="args">Process arguments.</param>
   /// <returns>Process result task.</returns>
   Task<ProcessResult> Run(string workingDir, string exe, string[] args);
+
+  /// <summary>
+  /// Run an external process with standard input and output for collecting user
+  /// input.
+  /// </summary>
+  /// <param name="workingDir">Working directory to run the process from.
+  /// </param>
+  /// <param name="exe">Process to run (must be in the system shell's path).
+  /// </param>
+  /// <param name="args">Process arguments.</param>
+  /// <returns>Process result task.</returns>
+  Task<ProcessResult> RunWithIO(string workingDir, string exe, string[] args);
 
   /// <summary>
   /// Runs an external process with callbacks for stdout and stderr.
@@ -84,6 +97,54 @@ public class ProcessRunner : IProcessRunner {
       ExitCode: result.ExitCode,
       StandardOutput: stdOutBuffer.ToString(),
       StandardError: stdErrBuffer.ToString()
+    );
+  }
+
+  public async Task<ProcessResult> RunWithIO(
+    string workingDir, string exe, string[] args
+  ) {
+    using var semaphore = new SemaphoreSlim(0, 1);
+    var stdInBuffer = new StringBuilder();
+    var stdIn = PipeSource.Create(async (destination, cancellationToken) => {
+      while (!cancellationToken.IsCancellationRequested) {
+        await semaphore.WaitAsync(cancellationToken);
+        var data = Encoding.UTF8.GetBytes(stdInBuffer.ToString());
+        await destination.WriteAsync(data, cancellationToken);
+      }
+    });
+
+    var cmd = Cli.Wrap(exe)
+      .WithArguments(args)
+      .WithValidation(CommandResultValidation.None)
+      .WithWorkingDirectory(workingDir)
+      .WithStandardInputPipe(stdIn);
+
+    var exitCode = 0;
+    await foreach (var cmdEvent in cmd.ListenAsync()) {
+      if (cmdEvent is StandardOutputCommandEvent stdOutEvent) {
+        if (stdOutEvent.Text.Contains("passphrase")) {
+          var passphrase = GetUserPassphrase(stdOutEvent.Text);
+          stdInBuffer.Clear();
+          stdInBuffer.AppendLine(passphrase);
+          semaphore.Release();
+        }
+        else {
+          Console.WriteLine(stdOutEvent.Text);
+        }
+      }
+      else if (cmdEvent is StandardErrorCommandEvent stdErrEvent) {
+        Console.WriteLine(stdErrEvent.Text);
+      }
+      else if (cmdEvent is ExitedCommandEvent exitEvent) {
+        exitCode = exitEvent.ExitCode;
+        break;
+      }
+    }
+
+    return new ProcessResult(
+      ExitCode: exitCode,
+      StandardOutput: string.Empty, // we already printed above
+      StandardError: string.Empty
     );
   }
 
@@ -157,5 +218,23 @@ public class ProcessRunner : IProcessRunner {
       StandardOutput: stdOutBuffer.ToString(),
       StandardError: stdErrBuffer.ToString()
     );
+  }
+
+  public static string GetUserPassphrase(string prompt) {
+    Console.Write(prompt);
+    var passphrase = string.Empty;
+    ConsoleKey key;
+    do {
+      var keyInfo = Console.ReadKey(intercept: true);
+      key = keyInfo.Key;
+
+      if (key == ConsoleKey.Backspace && passphrase.Length > 0) {
+        passphrase = passphrase[0..^1];
+      }
+      else if (!char.IsControl(keyInfo.KeyChar)) {
+        passphrase += keyInfo.KeyChar;
+      }
+    } while (key != ConsoleKey.Enter);
+    return passphrase;
   }
 }

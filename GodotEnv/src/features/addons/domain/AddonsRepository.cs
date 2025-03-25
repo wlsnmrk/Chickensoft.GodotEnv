@@ -198,7 +198,7 @@ public class AddonsRepository(
 
       if (!FileClient.DirectoryExists(addonCachePath)) {
         var addonsCacheShell = Computer.CreateShell(Config.CachePath);
-        await addonsCacheShell.Run(
+        await addonsCacheShell.RunWithIO(
           "git", "clone", addon.Url, "--recurse-submodules", cacheName
         );
       }
@@ -215,8 +215,8 @@ public class AddonsRepository(
     var addonCachePath = FileClient.Combine(Config.CachePath, cacheName);
     var addonCacheShell = Computer.CreateShell(addonCachePath);
     await addonCacheShell.RunUnchecked("git", "clean", "-fdx");
-    await addonCacheShell.RunUnchecked("git", "pull");
-    await addonCacheShell.RunUnchecked(
+    await addonCacheShell.RunWithIO("git", "pull");
+    await addonCacheShell.RunWithIO(
       "git",
       "submodule", "update", "--init", "--recursive", "--rebase", "--force"
     );

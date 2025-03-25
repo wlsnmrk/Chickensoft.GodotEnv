@@ -8,6 +8,7 @@ public interface IShell {
   string WorkingDir { get; }
 
   Task<ProcessResult> Run(string executable, params string[] args);
+  Task<ProcessResult> RunWithIO(string executable, params string[] args);
   Task<ProcessResult> RunUnchecked(string executable, params string[] args);
   Task<ProcessResult> RunWithUpdates(
       string executable,
@@ -30,6 +31,24 @@ public class Shell(IProcessRunner runner, string workingDir) : IShell {
         $"Failed to run `{executable}` in `{WorkingDir}`" +
         $" with args `{string.Join(" ", args)}`. Received exit " +
         $"code {result.ExitCode}."
+      );
+    }
+    return result;
+  }
+
+  public async Task<ProcessResult> RunWithIO(
+    string executable, params string[] args
+  ) {
+    var result = await Runner.RunWithIO(WorkingDir, executable, args);
+    if (!result.Succeeded) {
+      throw new InvalidOperationException(
+        $"Failed to run `{executable}` in `{WorkingDir}`" +
+        $" with args `{string.Join(" ", args)}`. Received exit " +
+        $"code {result.ExitCode}.\n\n" +
+        $"Subprocess output:\n" +
+        $"{result.StandardOutput}\n\n" +
+        $"Subprocess error output:\n" +
+        $"{result.StandardError}"
       );
     }
     return result;
