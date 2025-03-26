@@ -64,7 +64,9 @@ public class AddonsInstallCommand :
         onExtract: (addon, progress) => log.PrintInPlace(
           $"Extracting {addon.Name}... {progress}"
         ),
-        token,
+        onGitStdOut: console.Output.WriteLine,
+        onGitStdErr: console.Error.WriteLine,
+        token: token,
         addonsFileName: AddonsFileName
       );
     }

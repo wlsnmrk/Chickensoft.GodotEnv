@@ -89,6 +89,8 @@ public class AddonsInstallCommandTest {
           It.IsAny<Action<IReportableEvent>>(),
           It.IsAny<Action<Addon, DownloadProgress>>(),
           It.IsAny<Action<Addon, double>>(),
+          It.IsAny<Action<string>>(),
+          It.IsAny<Action<string>>(),
           It.IsAny<System.Threading.CancellationToken>(),
           It.IsAny<string?>()
         )
@@ -124,6 +126,8 @@ public class AddonsInstallCommandTest {
           It.IsAny<Action<IReportableEvent>>(),
           It.IsAny<Action<Addon, DownloadProgress>>(),
           It.IsAny<Action<Addon, double>>(),
+          It.IsAny<Action<string>>(),
+          It.IsAny<Action<string>>(),
           It.IsAny<System.Threading.CancellationToken>(),
           It.IsAny<string?>()
         )

@@ -44,12 +44,16 @@ public interface IAddonsRepository {
   /// addon to.</param>
   /// <param name="downloadProgress">Download progress callback.</param>
   /// <param name="extractProgress">Zip extraction progress callback.</param>
+  /// <param name="onGitStdOut">Git stdout callback.</param>
+  /// <param name="onGitStdErr">Git stderr callback.</param>
   /// <returns>Fully qualified path to the cached addon file.</returns>
   Task<string> CacheAddon(
     IAddon addon,
     string cacheName,
     IProgress<DownloadProgress> downloadProgress,
     IProgress<double> extractProgress,
+    Action<string> onGitStdOut,
+    Action<string> onGitStdErr,
     CancellationToken token
   );
   /// <summary>
@@ -59,8 +63,15 @@ public interface IAddonsRepository {
   /// <param name="addon">Addon.</param>
   /// <param name="cacheName">Name of the directory in the cache to clone the
   /// addon to.</param>
+  /// <param name="onStdOut">Git stdout callback.</param>
+  /// <param name="onStdErr">Git stderr callback.</param>
   /// <returns>Task that completes when the cache is updated.</returns>
-  Task UpdateCache(IAddon addon, string cacheName);
+  Task UpdateCache(
+    IAddon addon,
+    string cacheName,
+    Action<string> onStdOut,
+    Action<string> onStdErr
+  );
   /// <summary>
   /// Prepares a cached addon by ensuring the branch the addon requires is
   /// checked out.
@@ -68,16 +79,30 @@ public interface IAddonsRepository {
   /// <param name="addon">Addon.</param>
   /// <param name="cacheName">Name of the directory in the cache containing
   /// the addon assets.</param>
+  /// <param name="onStdOut">Git stdout callback.</param>
+  /// <param name="onStdErr">Git stderr callback.</param>
   /// <returns>Task that completes when the cache is prepared.</returns>
-  Task PrepareCache(IAddon addon, string cacheName);
+  Task PrepareCache(
+    IAddon addon,
+    string cacheName,
+    Action<string> onStdOut,
+    Action<string> onStdErr
+  );
   /// <summary>
   /// Copies a cached addon to a project's addons installation directory.
   /// </summary>
   /// <param name="addon"></param>
   /// <param name="cacheName">Name of the directory in the cache containing
   /// the addon assets.</param>
+  /// <param name="onStdOut">Git stdout callback.</param>
+  /// <param name="onStdErr">Git stderr callback.</param>
   /// <returns>Task that completes when the addon is copied.</returns>
-  Task InstallAddonFromCache(IAddon addon, string cacheName);
+  Task InstallAddonFromCache(
+    IAddon addon,
+    string cacheName,
+    Action<string> onGitStdOut,
+    Action<string> onGitStdErr
+  );
   /// <summary>
   /// Deletes an installed addon.
   /// </summary>
@@ -145,6 +170,8 @@ public class AddonsRepository(
     string cacheName,
     IProgress<DownloadProgress> downloadProgress,
     IProgress<double> extractProgress,
+    Action<string> onGitStdOut,
+    Action<string> onGitStdErr,
     CancellationToken token
   ) {
     if (addon.IsSymlink) {
@@ -198,8 +225,14 @@ public class AddonsRepository(
 
       if (!FileClient.DirectoryExists(addonCachePath)) {
         var addonsCacheShell = Computer.CreateShell(Config.CachePath);
-        await addonsCacheShell.Run(
-          "git", "clone", addon.Url, "--recurse-submodules", cacheName
+        await addonsCacheShell.RunWithUpdates(
+          "git",
+          onGitStdOut,
+          onGitStdErr,
+          "clone",
+          addon.Url,
+          "--recurse-submodules",
+          cacheName
         );
       }
 
@@ -209,26 +242,49 @@ public class AddonsRepository(
     }
   }
 
-  public async Task UpdateCache(IAddon addon, string cacheName) {
+  public async Task UpdateCache(
+    IAddon addon,
+    string cacheName,
+    Action<string> onStdOut,
+    Action<string> onStdErr
+  ) {
     if (addon.IsSymlink || addon.IsZip) { return; }
 
     var addonCachePath = FileClient.Combine(Config.CachePath, cacheName);
     var addonCacheShell = Computer.CreateShell(addonCachePath);
-    await addonCacheShell.RunUnchecked("git", "clean", "-fdx");
-    await addonCacheShell.RunUnchecked("git", "pull");
-    await addonCacheShell.RunUnchecked(
+    await addonCacheShell.RunWithUpdates(
+      "git", onStdOut, onStdErr, "clean", "-fdx"
+    );
+    await addonCacheShell.RunWithUpdates("git", onStdOut, onStdErr, "pull");
+    await addonCacheShell.RunWithUpdates(
       "git",
-      "submodule", "update", "--init", "--recursive", "--rebase", "--force"
+      onStdOut,
+      onStdErr,
+      "submodule",
+      "update",
+      "--init",
+      "--recursive",
+      "--rebase",
+      "--force"
     );
   }
 
-  public async Task PrepareCache(IAddon addon, string cacheName) {
+  public async Task PrepareCache(
+    IAddon addon,
+    string cacheName,
+    Action<string> onStdOut,
+    Action<string> onStdErr
+  ) {
     if (addon.IsSymlink || addon.IsZip) { return; }
 
     var addonCachePath = FileClient.Combine(Config.CachePath, cacheName);
     var addonCacheShell = Computer.CreateShell(addonCachePath);
-    await addonCacheShell.RunUnchecked("git", "clean", "-fdx");
-    await addonCacheShell.Run("git", "checkout", addon.Checkout);
+    await addonCacheShell.RunWithUpdates(
+      "git", onStdOut, onStdErr, "clean", "-fdx"
+    );
+    await addonCacheShell.RunWithUpdates(
+      "git", onStdOut, onStdErr, "checkout", addon.Checkout
+    );
   }
 
   public async Task DeleteAddon(IAddon addon) {
@@ -267,7 +323,12 @@ public class AddonsRepository(
     }
   }
 
-  public async Task InstallAddonFromCache(IAddon addon, string cacheName) {
+  public async Task InstallAddonFromCache(
+    IAddon addon,
+    string cacheName,
+    Action<string> onGitStdOut,
+    Action<string> onGitStdErr
+  ) {
     var addonCachePath = GetCachedAddonPath(addon, cacheName);
     // copy addon from cache to installation location
     var projectShell = Computer.CreateShell(Config.ProjectPath);
@@ -290,19 +351,33 @@ public class AddonsRepository(
     var addonShell = Computer.CreateShell(addonInstallPath);
     // Make a junk repo in the installed addon dir. We use this for change
     // tracking to avoid deleting a modified addon.
-    await addonShell.Run("git", "init");
-    await addonShell.Run(
-      "git", "config", "--local", "user.email", "godotenv@godotenv.com"
+    await addonShell.RunWithUpdates("git", onGitStdOut, onGitStdErr, "init");
+    await addonShell.RunWithUpdates(
+      "git",
+      onGitStdOut,
+      onGitStdErr,
+      "config", "--local", "user.email", "godotenv@godotenv.com"
     );
-    await addonShell.Run(
-      "git", "config", "--local", "user.name", "GodotEnv"
+    await addonShell.RunWithUpdates(
+      "git",
+      onGitStdOut,
+      onGitStdErr,
+      "config", "--local", "user.name", "GodotEnv"
     );
-    await addonShell.Run("git", "add", "-A");
-    await addonShell.Run(
-      "git", "config", "--local", "commit.gpgsign", "false"
+    await addonShell.RunWithUpdates(
+      "git", onGitStdOut, onGitStdErr, "add", "-A"
     );
-    await addonShell.Run(
-      "git", "commit", "-m", "\"Initial commit\""
+    await addonShell.RunWithUpdates(
+      "git",
+      onGitStdOut,
+      onGitStdErr,
+      "config", "--local", "commit.gpgsign", "false"
+    );
+    await addonShell.RunWithUpdates(
+      "git",
+      onGitStdOut,
+      onGitStdErr,
+      "commit", "-m", "\"Initial commit\""
     );
   }
 

@@ -16,6 +16,8 @@ public interface IAddonsInstaller {
     Action<IReportableEvent> onReport,
     Action<Addon, DownloadProgress> onDownload,
     Action<Addon, double> onExtract,
+    Action<string> onGitStdOut,
+    Action<string> onGitStdErr,
     CancellationToken token,
     string? addonsFileName = null
   );
@@ -49,6 +51,8 @@ public class AddonsInstaller : IAddonsInstaller {
     Action<IReportableEvent> onReport,
     Action<Addon, DownloadProgress> onDownload,
     Action<Addon, double> onExtract,
+    Action<string> onGitStdOut,
+    Action<string> onGitStdErr,
     CancellationToken token,
     string? addonsFileName = null
   ) {
@@ -135,13 +139,19 @@ public class AddonsInstaller : IAddonsInstaller {
             new Progress<double>(
               (progress) => onExtract(addon, progress)
             ),
+            onGitStdOut,
+            onGitStdErr,
             token
           );
 
           // Checkout correct branch.
-          await AddonsRepo.PrepareCache(addon, cacheName);
+          await AddonsRepo.PrepareCache(
+            addon, cacheName, onGitStdOut, onGitStdErr
+          );
           // Ensure the branch and submodules are up-to-date.
-          await AddonsRepo.UpdateCache(addon, cacheName);
+          await AddonsRepo.UpdateCache(
+            addon, cacheName, onGitStdOut, onGitStdErr
+          );
 
           searchPaths.Enqueue(pathToCachedAddon);
         }
@@ -175,11 +185,15 @@ public class AddonsInstaller : IAddonsInstaller {
       }
 
       // Checkout the correct branch from the correct cache.
-      await AddonsRepo.PrepareCache(addon, cacheName);
+      await AddonsRepo.PrepareCache(
+        addon, cacheName, onGitStdOut, onGitStdErr
+      );
       // Delete any previously installation in the addons directory.
       await AddonsRepo.DeleteAddon(addon);
       // Copy the addon files from the cache to the addons directory.
-      await AddonsRepo.InstallAddonFromCache(addon, cacheName);
+      await AddonsRepo.InstallAddonFromCache(
+        addon, cacheName, onGitStdOut, onGitStdErr
+      );
     }
 
     return Result.Succeeded;

@@ -50,6 +50,8 @@ public class AddonsInstallerTest {
       (@event) => { },
       (addon, progress) => { },
       (addon, progress) => { },
+      (str) => { },
+      (str) => { },
       token
     );
 
@@ -111,6 +113,8 @@ public class AddonsInstallerTest {
       (@event) => { },
       (addon, progress) => { },
       (addon, progress) => { },
+      (str) => { },
+      (str) => { },
       token
     );
 
@@ -186,17 +190,19 @@ public class AddonsInstallerTest {
           cacheName,
           It.IsAny<IProgress<DownloadProgress>>(),
           It.IsAny<IProgress<double>>(),
+          It.IsAny<Action<string>>(),
+          It.IsAny<Action<string>>(),
           token
         )
       )
     .Returns(Task.FromResult(pathToCachedAddon));
 
     addonsRepo
-      .Setup(repo => repo.PrepareCache(addon, cacheName))
+      .Setup(repo => repo.PrepareCache(addon, cacheName, It.IsAny<Action<string>>(), It.IsAny<Action<string>>()))
       .Returns(Task.CompletedTask);
 
     addonsRepo
-      .Setup(repo => repo.UpdateCache(addon, cacheName))
+      .Setup(repo => repo.UpdateCache(addon, cacheName, It.IsAny<Action<string>>(), It.IsAny<Action<string>>()))
       .Returns(Task.CompletedTask);
 
     var otherAddonsFilePath = "";
@@ -216,6 +222,8 @@ public class AddonsInstallerTest {
       (@event) => { },
       (addon, progress) => { },
       (addon, progress) => { },
+      (str) => { },
+      (str) => { },
       token
     );
 
@@ -276,6 +284,8 @@ public class AddonsInstallerTest {
         addon.Name,
         It.IsAny<IProgress<DownloadProgress>>(),
         It.IsAny<IProgress<double>>(),
+        It.IsAny<Action<string>>(),
+        It.IsAny<Action<string>>(),
         token
       )
     )
@@ -305,6 +315,8 @@ public class AddonsInstallerTest {
       (@event) => { },
       (addon, progress) => { },
       (addon, progress) => { },
+      (str) => { },
+      (str) => { },
       token
     );
 
