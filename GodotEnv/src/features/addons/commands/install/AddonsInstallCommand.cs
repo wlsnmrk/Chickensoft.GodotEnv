@@ -29,6 +29,13 @@ public class AddonsInstallCommand :
   )]
   public string? AddonsFileName { get; init; }
 
+  [CommandOption(
+    "verbose",
+    'v',
+    Description = "Echo output from git subprocesses."
+  )]
+  public bool IsVerbose { get; init; }
+
   // If we have any top-level addons that are symlinks, we know we're going
   // to need to elevate on Windows.
   public bool IsWindowsElevationRequired =>
@@ -64,8 +71,8 @@ public class AddonsInstallCommand :
         onExtract: (addon, progress) => log.PrintInPlace(
           $"Extracting {addon.Name}... {progress}"
         ),
-        onGitStdOut: console.Output.WriteLine,
-        onGitStdErr: console.Error.WriteLine,
+        onGitStdOut: IsVerbose ? console.Output.WriteLine : SwallowOutput,
+        onGitStdErr: IsVerbose ? console.Error.WriteLine : SwallowOutput,
         token: token,
         addonsFileName: AddonsFileName
       );
@@ -108,4 +115,6 @@ public class AddonsInstallCommand :
         );
     }
   }
+
+  internal static void SwallowOutput(string s) { }
 }
